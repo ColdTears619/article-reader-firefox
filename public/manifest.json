@@ -3,6 +3,7 @@
   "name": "Article Reader",
   "version": "1.0.0",
   "description": "Read, save, translate, highlight and explain articles without a backend",
+  "incognito": "not_allowed",
   "permissions": ["activeTab", "storage", "unlimitedStorage", "contextMenus", "tabs", "scripting"],
   "host_permissions": [
     "https://firefox.settings.services.mozilla.com/*",

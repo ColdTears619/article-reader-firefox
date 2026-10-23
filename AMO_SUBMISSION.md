@@ -85,6 +85,7 @@ No environment variables, private registries, credentials, network-based build s
 - The default translation provider runs on-device.
 - Local summaries and key points run on-device.
 - Article content, saved articles, highlights, notes, and settings are stored in the user's Firefox profile.
+- The manifest sets `incognito` to `not_allowed`; private tabs and windows are invisible to the extension and private-browsing activity is not stored.
 - The extension contains no analytics, advertising, telemetry, or developer-operated backend.
 - On first use of a language pair, model files are downloaded from Mozilla Firefox Remote Settings and its official attachment CDN. Article text is not sent with model requests.
 - Google Cloud Translation and OpenAI-compatible providers are optional. The user must configure a provider, confirm the disclosure, grant Firefox's optional `websiteContent` and `authenticationInfo` permissions, and directly invoke an operation before data is sent.
@@ -127,3 +128,4 @@ Article markup is sanitized with DOMPurify before storage and sanitized again be
 5. Open **Settings** to inspect the local and optional cloud-provider choices.
 
 Firefox-protected pages such as `about:` pages are intentionally unsupported.
+Private Browsing is intentionally unsupported so no data from a private session can enter persistent extension storage.

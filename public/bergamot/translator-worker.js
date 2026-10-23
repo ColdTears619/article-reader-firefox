@@ -348,7 +348,7 @@ class BergamotTranslatorWorker {
             quiet-translation: true
             max-length-break: 128
             mini-batch-words: 1024
-            workspace: 64
+            workspace: 128
             max-length-factor: 2.0
         `));
 

@@ -18,6 +18,8 @@ The following information stays in the user's Firefox profile and is not transmi
 
 Removing the extension normally removes its extension-owned local storage. Firefox profile management, backups, and synchronization are controlled by Firefox and the user.
 
+Article Reader is not available in Private Browsing. Its manifest prevents the extension from seeing private tabs or windows, so it does not read or store private-browsing activity.
+
 ## On-device translation model downloads
 
 When a language model is not already cached, Article Reader downloads the model catalog and model files from Mozilla's Firefox Remote Settings services. Article text is not included in these requests.

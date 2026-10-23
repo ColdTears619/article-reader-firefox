@@ -36,7 +36,7 @@ English ↔ Persian is supported by the released Mozilla models. Other languages
 
 - English → Persian uses about 14.6 MB of compressed disk cache; the reverse direction is similar.
 - Total model cache is capped at 128 MB. Older files are removed automatically.
-- The Bergamot workspace is limited to 64 MB.
+- The Bergamot workspace follows the upstream 128 MB setting.
 - The translation worker is terminated 20 seconds after the last translation so its WASM and model memory can be reclaimed.
 - A direct translation normally stays below a few hundred megabytes of transient memory. Pivot translation temporarily loads two models and is heavier.
 
@@ -112,6 +112,7 @@ Firefox also requests its optional `websiteContent` and `authenticationInfo` dat
 - Mozilla receives ordinary model-catalog and model-file requests, not article text.
 - Cloud processing is opt-in and only runs after a direct user action.
 - Firefox's built-in data-consent prompt controls optional transmission of website text and provider credentials.
+- Private Browsing is disabled for this release, so private-window activity cannot be read or stored by the extension.
 - Provider output is rendered as text, never executed as HTML.
 - Extracted article markup is sanitized before it reaches the reader.
 - API keys are stored in `browser.storage.local`. Browser-extension storage is not a server-side secret vault, so use restricted and revocable keys.
@@ -128,6 +129,8 @@ Firefox also requests its optional `websiteContent` and `authenticationInfo` dat
 | `contextMenus` | Add Reader, translate, summarize, and explain actions to the Firefox context menu. |
 | Mozilla model hosts | Download the official model catalog and model weights. Article text is never sent to these hosts. |
 | Optional `http://*/*` / `https://*/*` | Access a cloud-provider endpoint selected and approved by the user. |
+
+The manifest sets `incognito` to `not_allowed`; private tabs and windows are invisible to Article Reader.
 
 ## Architecture
 
