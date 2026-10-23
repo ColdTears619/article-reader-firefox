@@ -1,4 +1,5 @@
 import browser from 'webextension-polyfill';
+import DOMPurify from 'dompurify';
 import { createTextAnchor, resolveTextAnchor } from '../highlights/anchor';
 import { wrapTextRange } from '../highlights/render';
 import { articleRepository, highlightRepository, noteRepository, settingsRepository } from '../storage/repositories';
@@ -7,6 +8,7 @@ import { isExtensionDisconnectedError, isRtlText, uid } from '../shared/utils';
 import { readerStyle } from './preferences';
 import { highlightCodeBlocks } from './code-highlighting';
 import { collectReferences } from '../extraction/references';
+import { replaceWithTrustedHtml } from '../shared/dom';
 
 const byId = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const state = byId<HTMLElement>('state');
@@ -62,7 +64,7 @@ function renderArticle(): void {
   byId('title').textContent = article.title;
   byId('source').textContent = article.siteName;
   byId('meta').textContent = [article.byline, new URL(article.url).hostname].filter(Boolean).join(' · ');
-  content.innerHTML = article.content;
+  replaceWithTrustedHtml(content, DOMPurify.sanitize(article.content));
   highlightCodeBlocks(content);
   prepareTables();
   prepareImages();

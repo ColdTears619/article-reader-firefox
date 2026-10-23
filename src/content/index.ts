@@ -4,6 +4,7 @@ import browser from 'webextension-polyfill';
 import type { Article, ExtensionMessage } from '../types';
 import { toArticle } from '../extraction/article';
 import { collectReferences } from '../extraction/references';
+import { replaceWithTrustedHtml } from '../shared/dom';
 
 async function extractArticle(): Promise<Article> {
   const clone = document.cloneNode(true) as Document;
@@ -18,7 +19,7 @@ async function extractArticle(): Promise<Article> {
   });
   const base = new URL(location.href);
   const container = document.createElement('div');
-  container.innerHTML = cleanContent;
+  replaceWithTrustedHtml(container, cleanContent);
   container.querySelectorAll<HTMLElement>('*').forEach((element, index) => {
     if (/^(P|H[1-6]|LI|BLOCKQUOTE|PRE)$/.test(element.tagName)) element.dataset.readerBlock = `block-${index}`;
   });

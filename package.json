@@ -1,7 +1,7 @@
 {
   "name": "article-reader-extension",
   "private": true,
-  "version": "0.9.4",
+  "version": "1.0.0",
   "description": "A private, local-first Firefox reader with on-device translation, highlights, notes, references, and optional AI tools.",
   "license": "MIT",
   "repository": {
@@ -19,7 +19,9 @@
     "lint": "eslint .",
     "test": "vitest run",
     "build": "npm run typecheck && npm run test && vite build --mode pages && vite build --mode background && vite build --mode content",
-    "package": "npm run build && cd dist && zip -FS -r ../article-reader-firefox.zip ."
+    "package": "npm run build && cd dist && zip -FS -r ../article-reader-firefox.zip .",
+    "package:source": "git archive --format=zip --output=article-reader-firefox-source.zip HEAD",
+    "package:amo": "npm run package && npm run package:source"
   },
   "dependencies": {
     "@browsermt/bergamot-translator": "^0.4.9",

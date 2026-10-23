@@ -2,10 +2,14 @@ import browser from 'webextension-polyfill';
 import { settingsRepository } from '../storage/repositories';
 import type { ProviderSettings } from '../types';
 import { GOOGLE_TRANSLATE_ORIGIN } from '../providers/google';
+import { CLOUD_DATA_TYPES } from '../shared/cloud-permissions';
 
 const form = document.querySelector<HTMLFormElement>('#provider-form')!;
 const byId = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const status = byId<HTMLElement>('save-status');
+type FirefoxPermissionRequest = browser.Permissions.Permissions & {
+  data_collection?: string[];
+};
 
 async function load(): Promise<void> {
   const value = await settingsRepository.getProvider();
@@ -55,8 +59,15 @@ async function ensureEndpointPermission(value: ProviderSettings): Promise<void> 
     origins.add(`${endpoint.protocol}//${endpoint.host}/*`);
   }
   if (!origins.size) return;
-  const granted = await browser.permissions.request({ origins: [...origins] });
-  if (!granted) throw new Error('Permission to access the provider domain was not granted.');
+  if (!value.consentGiven) {
+    throw new Error('Confirm cloud data sharing before enabling a cloud provider.');
+  }
+  const request: FirefoxPermissionRequest = {
+    origins: [...origins],
+    data_collection: [...CLOUD_DATA_TYPES]
+  };
+  const granted = await browser.permissions.request(request);
+  if (!granted) throw new Error('Firefox permission to send text and provider credentials was not granted.');
 }
 
 byId<HTMLButtonElement>('clear-key').addEventListener('click', () => {

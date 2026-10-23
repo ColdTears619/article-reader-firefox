@@ -4,6 +4,7 @@ import { detectSourceLanguage } from '../providers/local-translation';
 import { articleRepository, resultRepository, settingsRepository } from '../storage/repositories';
 import type { AIResult, Article, ExtensionMessage, TranslationResult } from '../types';
 import { uid } from '../shared/utils';
+import { hasCloudDataPermissions, type FirefoxDataPermissions } from '../shared/cloud-permissions';
 
 const controllers = new Map<string, AbortController>();
 const running = new Map<string, Promise<unknown>>();
@@ -78,7 +79,7 @@ async function saveCurrent(tabId?: number): Promise<{ ok: boolean; articleId?: s
 
 async function runTranslation(request: Extract<ExtensionMessage, { type: 'translate' }>) {
   const settings = await settingsRepository.getProvider();
-  requireConsent(settings.translationProvider, settings.consentGiven);
+  await requireConsent(settings.translationProvider, settings.consentGiven);
   const text = limit(request.text, settings.maxInputChars);
   const timeoutMs = settings.translationProvider === 'local' ? Math.max(settings.timeoutMs, 180_000) : settings.timeoutMs;
   const controller = withTimeout(request.requestId, timeoutMs);
@@ -94,7 +95,7 @@ async function runTranslation(request: Extract<ExtensionMessage, { type: 'transl
 
 async function runAI(request: Extract<ExtensionMessage, { type: 'ai' }>) {
   const settings = await settingsRepository.getProvider();
-  requireConsent(settings.aiProvider, settings.consentGiven);
+  await requireConsent(settings.aiProvider, settings.consentGiven);
   const text = limit(request.text, settings.maxInputChars);
   const controller = withTimeout(request.requestId, settings.timeoutMs);
   try {
@@ -123,7 +124,14 @@ function withTimeout(id: string, timeoutMs: number): AbortController {
 
 function clearRequest(id: string): void { controllers.delete(id); }
 function limit(text: string, max: number): string { return text.length <= max ? text : `${text.slice(0, max)}\n\n[Text was shortened to fit the configured input limit.]`; }
-function requireConsent(provider: string, consent: boolean): void { if (provider !== 'local' && provider !== 'mock' && !consent) throw new Error('Confirm provider data sharing in Settings before using a cloud provider.'); }
+async function requireConsent(provider: string, consent: boolean): Promise<void> {
+  if (provider === 'local' || provider === 'mock' || provider === 'none') return;
+  if (!consent) throw new Error('Confirm provider data sharing in Settings before using a cloud provider.');
+  const permissions = await browser.permissions.getAll() as browser.Permissions.Permissions & FirefoxDataPermissions;
+  if (!hasCloudDataPermissions(permissions)) {
+    throw new Error('Cloud data permission is missing or was revoked. Open Settings and save the provider again.');
+  }
+}
 function needsSettings(error: unknown): boolean { return Boolean(error && typeof error === 'object' && 'needsSettings' in error && error.needsSettings); }
 function friendlyError(error: unknown): string {
   if (error instanceof DOMException && error.name === 'AbortError') return 'The request was cancelled or timed out.';

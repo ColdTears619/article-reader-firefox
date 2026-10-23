@@ -6,7 +6,7 @@ A private, local-first reading mode for Firefox with on-device translation, pers
 
 Article Reader exists to solve a specific gap: Firefox Reader View is a privileged browser page, so ordinary translation extensions cannot run inside it. Firefox Reader View also does not provide the complete annotation and translation workflow this project aims for. This extension extracts the article into its own secure reader, where those tools can work together without requiring an account or a hosted backend.
 
-> **Project status:** pre-1.0 and under active development. It is ready for temporary installation and testing, but it has not yet been submitted to Mozilla Add-ons.
+> **Project status:** version 1.0 release candidate, prepared for its initial Mozilla Add-ons submission. It has not yet been signed or listed by Mozilla.
 
 ## What it does
 
@@ -54,7 +54,7 @@ No developer-owned API key is included in the source or build.
 
 Requirements:
 
-- Firefox 109 or newer
+- Firefox 140 or newer
 - Node.js 20 or newer
 - npm
 
@@ -103,6 +103,7 @@ Provide a Google Cloud API key with Cloud Translation Basic v2 enabled. Restrict
 Provide a complete Chat Completions endpoint, model name, and API key. The endpoint must return content in `choices[0].message.content`.
 
 The extension requests host permission for the configured endpoint and requires explicit consent before sending selected text to a cloud provider.
+Firefox also requests its optional `websiteContent` and `authenticationInfo` data permissions. Revoking either permission in `about:addons` immediately prevents further cloud requests until the user grants permission again. Local tools do not require these permissions.
 
 ## Privacy and security
 
@@ -110,6 +111,7 @@ The extension requests host permission for the configured endpoint and requires 
 - In the default local modes, article text never leaves the device.
 - Mozilla receives ordinary model-catalog and model-file requests, not article text.
 - Cloud processing is opt-in and only runs after a direct user action.
+- Firefox's built-in data-consent prompt controls optional transmission of website text and provider credentials.
 - Provider output is rendered as text, never executed as HTML.
 - Extracted article markup is sanitized before it reaches the reader.
 - API keys are stored in `browser.storage.local`. Browser-extension storage is not a server-side secret vault, so use restricted and revocable keys.
@@ -163,3 +165,4 @@ Issues and pull requests are welcome. Please run `npm run typecheck`, `npm run l
 
 The original Article Reader source is released under the [MIT License](LICENSE). Bundled and compiled third-party components retain their own licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
+See the full [Privacy Policy](PRIVACY.md) for data handling and optional cloud-provider details.

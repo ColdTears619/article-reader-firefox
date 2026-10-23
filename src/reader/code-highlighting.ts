@@ -1,4 +1,5 @@
 import hljs from 'highlight.js/lib/common';
+import { replaceWithTrustedHtml } from '../shared/dom';
 
 export function highlightCodeBlocks(root: Element): number {
   let count = 0;
@@ -11,7 +12,7 @@ export function highlightCodeBlocks(root: Element): number {
     }
     const source = codeText(code);
     const highlighted = hljs.highlightAuto(source);
-    code.innerHTML = highlighted.value;
+    replaceWithTrustedHtml(code, highlighted.value);
     code.classList.add('hljs');
     if (highlighted.language) code.dataset.language = highlighted.language;
     count += 1;
