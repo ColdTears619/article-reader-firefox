@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Article Reader settings</title><link rel="stylesheet" href="/src/styles.css"></head>
+<body>
+  <main class="settings-page">
+    <div class="page-heading"><div><p class="eyebrow">Article Reader</p><h1>Provider settings</h1></div><a href="library.html">Library</a></div>
+    <form id="provider-form" class="settings-form">
+      <section>
+        <h2>Translation and AI</h2>
+        <p class="muted">Translation, summaries, and key points can run privately on this device. Cloud providers remain optional.</p>
+        <label>Translation provider<select id="translation-provider"><option value="local">On-device — free & private</option><option value="google-cloud">Google Cloud Translation</option><option value="openai-compatible">OpenAI-compatible</option></select></label>
+        <div id="local-translation-settings" class="provider-subsection">
+          <div><h3>Mozilla on-device translation</h3><p class="muted">Uses the Bergamot engine and Mozilla language models. A language model is downloaded on first use, verified, and cached for offline translations. Article text never leaves this device.</p></div>
+        </div>
+        <div id="google-settings" class="provider-subsection hidden">
+          <div><h3>Google Cloud Translation</h3><p class="muted">Uses the official Basic v2 API with automatic source-language detection. Enable Cloud Translation and billing in your Google Cloud project first.</p></div>
+          <label>Google API key<div class="secret-row"><input id="google-api-key" type="password" autocomplete="off" placeholder="Enter your Google Cloud API key"><button id="clear-google-key" type="button" class="danger">Remove key</button></div></label>
+          <p class="muted provider-help">For safety, restrict this key to the Cloud Translation API and configure a usage quota in Google Cloud.</p>
+          <p class="provider-links"><a href="https://console.cloud.google.com/apis/library/translate.googleapis.com" target="_blank" rel="noopener noreferrer">Enable the API</a><a href="https://docs.cloud.google.com/translate/docs/setup" target="_blank" rel="noopener noreferrer">Google setup guide</a></p>
+        </div>
+        <label>Summary and AI mode<select id="ai-provider"><option value="none">None — ask me to choose first</option><option value="local">On-device summary & key points</option><option value="openai-compatible">OpenAI-compatible AI</option></select></label>
+        <div id="local-ai-settings" class="provider-subsection">
+          <div><h3>Free local article tools</h3><p class="muted">Summary and Key points extract the most relevant original sentences locally. Generative actions such as Explain still require an AI provider and will show a Settings prompt when no key is configured.</p></div>
+        </div>
+        <div id="openai-settings" class="provider-subsection">
+          <label>OpenAI-compatible endpoint<input id="endpoint" type="url" autocomplete="off"></label>
+          <label>Model<input id="model" type="text" autocomplete="off"></label>
+          <label>OpenAI-compatible API key<div class="secret-row"><input id="api-key" type="password" autocomplete="off" placeholder="Enter your API key"><button id="clear-key" type="button" class="danger">Remove key</button></div></label>
+        </div>
+        <label>Default translation language<select id="target-language"><option value="en">English</option><option value="fa">Persian</option><option value="ar">Arabic</option><option value="fr">French</option><option value="de">German</option><option value="es">Spanish</option><option value="tr">Turkish</option><option value="it">Italian</option><option value="ru">Russian</option><option value="zh">Chinese</option><option value="ja">Japanese</option></select></label>
+        <label>Request timeout (seconds)<input id="timeout" type="number" min="5" max="300"></label>
+        <label>Maximum text length sent<input id="max-input" type="number" min="1000" max="100000" step="1000"></label>
+        <label class="consent"><input id="consent" type="checkbox"> I understand that using an optional cloud provider sends the requested text to that provider. Local tools do not send article text.</label>
+      </section>
+      <div class="form-actions"><button type="submit">Save settings</button><span id="save-status" class="message" aria-live="polite"></span></div>
+    </form>
+  </main>
+  <script type="module" src="/src/options/index.ts"></script>
+</body>
+</html>

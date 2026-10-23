@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "name": "Article Reader",
+  "version": "0.9.4",
+  "description": "Read, save, translate, highlight and explain articles without a backend",
+  "permissions": ["activeTab", "storage", "unlimitedStorage", "contextMenus", "tabs", "scripting"],
+  "host_permissions": [
+    "https://firefox.settings.services.mozilla.com/*",
+    "https://firefox-settings-attachments.cdn.mozilla.net/*"
+  ],
+  "optional_host_permissions": ["https://*/*", "http://*/*"],
+  "background": { "scripts": ["background.js"] },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "96": "icons/icon-96.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_title": "Article Reader",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png"
+    },
+    "default_popup": "popup.html"
+  },
+  "options_ui": { "page": "options.html", "open_in_tab": true },
+  "content_scripts": [{
+    "matches": ["<all_urls>"],
+    "js": ["content.js"],
+    "run_at": "document_idle"
+  }],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  },
+  "browser_specific_settings": {
+    "gecko": { "id": "article-reader@example.local", "strict_min_version": "109.0" }
+  }
+}
