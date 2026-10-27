@@ -1,7 +1,7 @@
 {
   "name": "article-reader-extension",
   "private": true,
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "A private, local-first Firefox reader with on-device translation, highlights, notes, references, and optional AI tools.",
   "license": "MIT",
   "repository": {
