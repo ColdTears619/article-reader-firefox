@@ -5,6 +5,7 @@ import { articleRepository, resultRepository, settingsRepository } from '../stor
 import type { AIResult, Article, ExtensionMessage, TranslationResult } from '../types';
 import { uid } from '../shared/utils';
 import { hasCloudDataPermissions, type FirefoxDataPermissions } from '../shared/cloud-permissions';
+import { aiRequestTimeoutMs, runAIForText } from '../providers/full-text-ai';
 
 const controllers = new Map<string, AbortController>();
 const running = new Map<string, Promise<unknown>>();
@@ -96,11 +97,12 @@ async function runTranslation(request: Extract<ExtensionMessage, { type: 'transl
 async function runAI(request: Extract<ExtensionMessage, { type: 'ai' }>) {
   const settings = await settingsRepository.getProvider();
   await requireConsent(settings.aiProvider, settings.consentGiven);
-  const text = limit(request.text, settings.maxInputChars);
-  const controller = withTimeout(request.requestId, settings.timeoutMs);
+  const useCloudChunking = settings.aiProvider === 'openai-compatible';
+  const timeoutMs = aiRequestTimeoutMs(request.text.length, settings.maxInputChars, settings.timeoutMs, useCloudChunking, request.operation);
+  const controller = withTimeout(request.requestId, timeoutMs);
   try {
-    const output = await createProviders(settings).ai.run(text, request.operation, controller.signal);
-    const result: AIResult = { id: uid('ai'), articleId: request.articleId, operation: request.operation, sourceText: text, output, provider: settings.aiProvider, createdAt: Date.now() };
+    const output = await runAIForText(createProviders(settings).ai, request.text, request.operation, settings.maxInputChars, useCloudChunking, controller.signal);
+    const result: AIResult = { id: uid('ai'), articleId: request.articleId, operation: request.operation, sourceText: request.text, output, provider: settings.aiProvider, createdAt: Date.now() };
     await resultRepository.putAI(result);
     return { ok: true, result };
   } catch (error) { return { ok: false, error: friendlyError(error), needsSettings: needsSettings(error) }; }

@@ -12,6 +12,7 @@ import { replaceWithTrustedHtml } from '../shared/dom';
 import { createProviders } from '../providers';
 import { detectSourceLanguage } from '../providers/local-translation';
 import { hasCloudDataPermissions, type FirefoxDataPermissions } from '../shared/cloud-permissions';
+import { aiRequestTimeoutMs, runAIForText } from '../providers/full-text-ai';
 
 const byId = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const state = byId<HTMLElement>('state');
@@ -197,7 +198,9 @@ async function requestResult(operation: ResultOperation, text: string, targetLan
   byId('result-loading').textContent = operation === 'translate' && providerSettings.translationProvider === 'local'
     ? 'Translating privately on this device…'
     : operation === 'summarize' || operation === 'key-points'
-      ? 'Analyzing the article on this device…'
+      ? providerSettings.aiProvider === 'local'
+        ? 'Analyzing the full article on this device…'
+        : 'Analyzing the full article in secure parts…'
       : 'Working…';
   byId('result-output').textContent = ''; byId('result-settings').classList.add('hidden'); byId('result-reload').classList.add('hidden'); byId('result-loading').classList.remove('hidden'); byId('cancel-request').classList.remove('hidden');
   if (!resultDialog.open) resultDialog.showModal(); toolbar.classList.add('hidden');
@@ -246,17 +249,18 @@ async function runRequestInReader(operation: ResultOperation, text: string, targ
   try {
     const provider = operation === 'translate' ? settings.translationProvider : settings.aiProvider;
     await requireCloudPermission(provider, settings.consentGiven);
-    const limitedText = text.length <= settings.maxInputChars
-      ? text
-      : `${text.slice(0, settings.maxInputChars)}\n\n[Text was shortened to fit the configured input limit.]`;
-    const timeoutMs = operation === 'translate' && settings.translationProvider === 'local'
-      ? Math.max(settings.timeoutMs, 180_000)
-      : settings.timeoutMs;
+    const useCloudChunking = settings.aiProvider === 'openai-compatible';
+    const timeoutMs = operation === 'translate'
+      ? settings.translationProvider === 'local' ? Math.max(settings.timeoutMs, 180_000) : settings.timeoutMs
+      : aiRequestTimeoutMs(text.length, settings.maxInputChars, settings.timeoutMs, useCloudChunking, operation);
     const controller = new AbortController();
     currentRequestController = controller;
     const timeout = window.setTimeout(() => controller.abort(new DOMException('The request timed out.', 'TimeoutError')), timeoutMs);
     try {
       if (operation === 'translate') {
+        const limitedText = text.length <= settings.maxInputChars
+          ? text
+          : `${text.slice(0, settings.maxInputChars)}\n\n[Text was shortened to fit the configured input limit.]`;
         const sourceLanguage = await detectSourceLanguage(limitedText);
         const selectedTarget = targetLanguage ?? settings.targetLanguage;
         const translatedText = await createProviders(settings).translation.translate(limitedText, sourceLanguage, selectedTarget, controller.signal);
@@ -264,8 +268,8 @@ async function runRequestInReader(operation: ResultOperation, text: string, targ
         await resultRepository.putTranslation(result);
         return { ok: true, result };
       }
-      const output = await createProviders(settings).ai.run(limitedText, operation, controller.signal);
-      const result: AIResult = { id: uid('ai'), articleId: article?.id, operation, sourceText: limitedText, output, provider: settings.aiProvider, createdAt: Date.now() };
+      const output = await runAIForText(createProviders(settings).ai, text, operation, settings.maxInputChars, useCloudChunking, controller.signal);
+      const result: AIResult = { id: uid('ai'), articleId: article?.id, operation, sourceText: text, output, provider: settings.aiProvider, createdAt: Date.now() };
       await resultRepository.putAI(result);
       return { ok: true, result };
     } finally {
