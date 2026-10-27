@@ -2,13 +2,16 @@ import browser from 'webextension-polyfill';
 import DOMPurify from 'dompurify';
 import { createTextAnchor, resolveTextAnchor } from '../highlights/anchor';
 import { wrapTextRange } from '../highlights/render';
-import { articleRepository, highlightRepository, noteRepository, settingsRepository } from '../storage/repositories';
-import type { AIResult, Article, Highlight, HighlightColor, Note, ReaderPreferences, ReferenceLink, TranslationResult } from '../types';
-import { isExtensionDisconnectedError, isRtlText, uid } from '../shared/utils';
+import { articleRepository, highlightRepository, noteRepository, resultRepository, settingsRepository } from '../storage/repositories';
+import type { AIResult, Article, Highlight, HighlightColor, Note, ProviderSettings, ReaderPreferences, ReferenceLink, TranslationResult } from '../types';
+import { isExtensionContextInvalidatedError, isMissingMessageReceiverError, isRtlText, uid } from '../shared/utils';
 import { readerStyle } from './preferences';
 import { highlightCodeBlocks } from './code-highlighting';
 import { collectReferences } from '../extraction/references';
 import { replaceWithTrustedHtml } from '../shared/dom';
+import { createProviders } from '../providers';
+import { detectSourceLanguage } from '../providers/local-translation';
+import { hasCloudDataPermissions, type FirefoxDataPermissions } from '../shared/cloud-permissions';
 
 const byId = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const state = byId<HTMLElement>('state');
@@ -29,6 +32,7 @@ let selectedRange: Range | undefined;
 let selectedText = '';
 let pendingHighlight: Highlight | undefined;
 let currentRequestId: string | undefined;
+let currentRequestController: AbortController | undefined;
 let currentPreferences: ReaderPreferences;
 let selectionRect: DOMRect | undefined;
 let pendingTranslationText = '';
@@ -182,7 +186,10 @@ byId<HTMLFormElement>('note-form').addEventListener('submit', event => {
 byId('cancel-note').addEventListener('click', () => noteDialog.close());
 byId('close-note').addEventListener('click', () => noteDialog.close());
 
-async function requestResult(operation: 'translate' | 'explain' | 'summarize' | 'key-points', text: string, targetLanguage?: string): Promise<void> {
+type ResultResponse = { ok: boolean; result?: TranslationResult | AIResult; error?: string; needsSettings?: boolean };
+type ResultOperation = 'translate' | 'explain' | 'summarize' | 'key-points';
+
+async function requestResult(operation: ResultOperation, text: string, targetLanguage?: string): Promise<void> {
   if (currentRequestId) return;
   currentRequestId = uid('request');
   const providerSettings = await settingsRepository.getProvider();
@@ -201,23 +208,97 @@ async function requestResult(operation: 'translate' | 'explain' | 'summarize' | 
     : undefined;
   const payload = operation === 'translate' ? { type: 'translate', text, articleId: article?.id, sourceLanguage: 'auto', targetLanguage: targetLanguage ?? 'en', requestId: currentRequestId } : { type: 'ai', text, articleId: article?.id, operation, requestId: currentRequestId };
   try {
-    const response = await browser.runtime.sendMessage(payload) as { ok: boolean; result?: TranslationResult | AIResult; error?: string; needsSettings?: boolean } | undefined;
-    if (!response) throw new Error('The extension background did not return a response. Reload the extension and try again.');
+    const response = await requestThroughBackground(payload).catch(async error => {
+      if (!isMissingMessageReceiverError(error) || !extensionContextIsAlive()) throw error;
+      return runRequestInReader(operation, text, targetLanguage, providerSettings);
+    });
     byId('result-output').textContent = response.ok && response.result ? ('translatedText' in response.result ? response.result.translatedText : response.result.output) : (response.error ?? 'The request failed.');
     byId('result-settings').classList.toggle('hidden', !response.needsSettings);
   } catch (error) {
-    const disconnected = isExtensionDisconnectedError(error);
-    byId('result-output').textContent = disconnected
-      ? 'The extension was reloaded while this Reader page was open. Reload this page, then try again.'
+    const invalidated = isExtensionContextInvalidatedError(error);
+    byId('result-output').textContent = invalidated
+      ? 'This Reader page belongs to an older extension session. Close it and open the article in Article Reader again.'
       : error instanceof Error ? error.message : 'The request failed unexpectedly.';
-    byId('result-reload').classList.toggle('hidden', !disconnected);
+    byId('result-reload').classList.toggle('hidden', !invalidated);
   } finally {
     if (slowTranslationHint !== undefined) window.clearTimeout(slowTranslationHint);
+    currentRequestController = undefined;
     byId('result-loading').classList.add('hidden'); byId('cancel-request').classList.add('hidden'); currentRequestId = undefined;
   }
 }
 
-byId('cancel-request').addEventListener('click', () => { if (currentRequestId) void browser.runtime.sendMessage({ type: 'cancel-request', requestId: currentRequestId }); });
+async function requestThroughBackground(payload: object): Promise<ResultResponse> {
+  let lastError: unknown = new Error('Could not establish connection. Receiving end does not exist.');
+  for (const delayMs of [0, 180, 650]) {
+    if (delayMs) await delay(delayMs);
+    try {
+      const response = await browser.runtime.sendMessage(payload) as ResultResponse | undefined;
+      if (response) return response;
+    } catch (error) {
+      if (!isMissingMessageReceiverError(error)) throw error;
+      lastError = error;
+    }
+  }
+  throw lastError;
+}
+
+async function runRequestInReader(operation: ResultOperation, text: string, targetLanguage: string | undefined, settings: ProviderSettings): Promise<ResultResponse> {
+  try {
+    const provider = operation === 'translate' ? settings.translationProvider : settings.aiProvider;
+    await requireCloudPermission(provider, settings.consentGiven);
+    const limitedText = text.length <= settings.maxInputChars
+      ? text
+      : `${text.slice(0, settings.maxInputChars)}\n\n[Text was shortened to fit the configured input limit.]`;
+    const timeoutMs = operation === 'translate' && settings.translationProvider === 'local'
+      ? Math.max(settings.timeoutMs, 180_000)
+      : settings.timeoutMs;
+    const controller = new AbortController();
+    currentRequestController = controller;
+    const timeout = window.setTimeout(() => controller.abort(new DOMException('The request timed out.', 'TimeoutError')), timeoutMs);
+    try {
+      if (operation === 'translate') {
+        const sourceLanguage = await detectSourceLanguage(limitedText);
+        const selectedTarget = targetLanguage ?? settings.targetLanguage;
+        const translatedText = await createProviders(settings).translation.translate(limitedText, sourceLanguage, selectedTarget, controller.signal);
+        const result: TranslationResult = { id: uid('translation'), articleId: article?.id, sourceText: limitedText, translatedText, sourceLanguage, targetLanguage: selectedTarget, provider: settings.translationProvider, createdAt: Date.now() };
+        await resultRepository.putTranslation(result);
+        return { ok: true, result };
+      }
+      const output = await createProviders(settings).ai.run(limitedText, operation, controller.signal);
+      const result: AIResult = { id: uid('ai'), articleId: article?.id, operation, sourceText: limitedText, output, provider: settings.aiProvider, createdAt: Date.now() };
+      await resultRepository.putAI(result);
+      return { ok: true, result };
+    } finally {
+      window.clearTimeout(timeout);
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof DOMException && (error.name === 'AbortError' || error.name === 'TimeoutError')
+        ? 'The request was cancelled or timed out.'
+        : error instanceof Error ? error.message : 'An unexpected error occurred.',
+      needsSettings: Boolean(error && typeof error === 'object' && 'needsSettings' in error && error.needsSettings)
+    };
+  }
+}
+
+async function requireCloudPermission(provider: string, consentGiven: boolean): Promise<void> {
+  if (provider === 'local' || provider === 'mock' || provider === 'none') return;
+  if (!consentGiven) throw new Error('Confirm provider data sharing in Settings before using a cloud provider.');
+  const permissions = await browser.permissions.getAll() as browser.Permissions.Permissions & FirefoxDataPermissions;
+  if (!hasCloudDataPermissions(permissions)) throw new Error('Cloud data permission is missing or was revoked. Open Settings and save the provider again.');
+}
+
+function extensionContextIsAlive(): boolean {
+  try { return Boolean(browser.runtime.getManifest().name); } catch { return false; }
+}
+
+function delay(milliseconds: number): Promise<void> { return new Promise(resolve => window.setTimeout(resolve, milliseconds)); }
+
+byId('cancel-request').addEventListener('click', () => {
+  currentRequestController?.abort();
+  if (currentRequestId) void browser.runtime.sendMessage({ type: 'cancel-request', requestId: currentRequestId }).catch(() => undefined);
+});
 byId('result-settings').addEventListener('click', () => { void browser.runtime.openOptionsPage(); });
 byId('result-reload').addEventListener('click', () => { location.reload(); });
 byId<HTMLFormElement>('translation-form').addEventListener('submit', event => {

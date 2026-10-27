@@ -26,15 +26,34 @@ export class OpenAICompatibleClient {
     const response = await fetch(this.settings.endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.settings.apiKey}` },
-      body: JSON.stringify({ model: this.settings.model, messages: [{ role: 'system', content: system }, { role: 'user', content: user }], temperature: 0.2 }),
+      body: JSON.stringify({ model: this.settings.model, messages: [{ role: 'system', content: system }, { role: 'user', content: user }] }),
       signal
     });
-    if (!response.ok) throw new Error(`The provider returned HTTP ${response.status}. Check the endpoint, model, and API key.`);
-    const data: unknown = await response.json();
+    const rawResponse = await response.text();
+    const data: unknown = parseJson(rawResponse);
+    if (!response.ok) {
+      const detail = providerErrorMessage(data, rawResponse, this.settings.apiKey);
+      throw new Error(`The provider returned HTTP ${response.status}.${detail ? ` ${detail}` : ' Check the endpoint, model, and API key.'}`);
+    }
     const output = extractContent(data);
     if (!output) throw new Error('The provider returned an invalid response.');
     return output;
   }
+}
+
+function parseJson(value: string): unknown {
+  try { return JSON.parse(value); } catch { return null; }
+}
+
+function providerErrorMessage(value: unknown, raw: string, secret: string): string {
+  const message = value && typeof value === 'object'
+    ? (value as { error?: { message?: unknown }; message?: unknown }).error?.message
+      ?? (value as { message?: unknown }).message
+    : undefined;
+  const candidate = typeof message === 'string' ? message : raw.trim();
+  if (!candidate) return '';
+  const redacted = secret ? candidate.replaceAll(secret, '[redacted]') : candidate;
+  return redacted.replace(/\s+/g, ' ').slice(0, 300);
 }
 
 export class OpenAITranslationProvider implements TranslationProvider {

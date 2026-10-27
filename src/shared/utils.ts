@@ -18,7 +18,12 @@ export function isRtlText(text: string): boolean {
   return rtl > ltr;
 }
 
-export function isExtensionDisconnectedError(error: unknown): boolean {
+export function isMissingMessageReceiverError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
-  return /Could not establish connection|Receiving end does not exist|Extension context invalidated/i.test(message);
+  return /Could not establish connection|Receiving end does not exist/i.test(message);
+}
+
+export function isExtensionContextInvalidatedError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /Extension context invalidated/i.test(message);
 }
