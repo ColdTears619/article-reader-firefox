@@ -2,13 +2,13 @@ import { defineConfig } from 'vite';
 import { resolve } from 'node:path';
 
 export default defineConfig(({ mode }) => {
-  if (mode === 'background' || mode === 'content') {
+  if (mode === 'background' || mode === 'content' || mode === 'compatible') {
     return {
       build: {
         emptyOutDir: false,
         lib: {
           entry: resolve(__dirname, `src/${mode}/index.ts`),
-          name: mode === 'background' ? 'ArticleReaderBackground' : 'ArticleReaderContent',
+          name: mode === 'background' ? 'ArticleReaderBackground' : mode === 'content' ? 'ArticleReaderContent' : 'ArticleReaderCompatible',
           formats: ['iife'],
           fileName: () => `${mode}.js`
         },

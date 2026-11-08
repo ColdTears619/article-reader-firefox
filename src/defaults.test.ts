@@ -11,6 +11,7 @@ describe('safe defaults', () => {
   });
 
   it('keeps reader preferences in usable bounds', () => {
+    expect(DEFAULT_READER_PREFERENCES.readerMode).toBe('secure');
     expect(DEFAULT_READER_PREFERENCES.toolbarPosition).toBe('left');
     expect(DEFAULT_READER_PREFERENCES.fontSize).toBeGreaterThanOrEqual(16);
     expect(DEFAULT_READER_PREFERENCES.lineHeight).toBeGreaterThanOrEqual(1.4);

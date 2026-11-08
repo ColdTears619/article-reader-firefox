@@ -20,6 +20,12 @@ Removing the extension normally removes its extension-owned local storage. Firef
 
 Article Reader is not available in Private Browsing. Its manifest prevents the extension from seeing private tabs or windows, so it does not read or store private-browsing activity.
 
+## Reader isolation modes
+
+Secure Reader is the default and displays sanitized article content on an extension-owned page isolated from the source website.
+
+The optional Compatible Reader mode displays the same sanitized content inside the current website document so other extensions with permission for that website can interact with the Reader text. In this mode, the source website's already-running scripts and other permitted extensions may be able to observe or modify the displayed Reader document. Enabling Compatible Reader does not itself transmit article content, and Article Reader continues to store articles and annotations in extension-owned storage.
+
 ## On-device translation model downloads
 
 When a language model is not already cached, Article Reader downloads the model catalog and model files from Mozilla's Firefox Remote Settings services. Article text is not included in these requests.

@@ -4,14 +4,15 @@
 
 A private, local-first reading mode for Firefox with on-device translation, persistent highlights and notes, reference collection, readable code blocks, and optional AI tools.
 
-Article Reader exists to solve a specific gap: Firefox Reader View is a privileged browser page, so ordinary translation extensions cannot run inside it. Firefox Reader View also does not provide the complete annotation and translation workflow this project aims for. This extension extracts the article into its own secure reader, where those tools can work together without requiring an account or a hosted backend.
+Article Reader exists to solve a specific gap: Firefox Reader View is a privileged browser page, so ordinary translation extensions cannot run inside it. Firefox Reader View also does not provide the complete annotation and translation workflow this project aims for. This extension offers both an isolated Reader with built-in tools and an optional same-site compatibility mode where other extensions can access the rendered article.
 
-> **Project status:** version 1.0 release candidate, prepared for its initial Mozilla Add-ons submission. It has not yet been signed or listed by Mozilla.
+> **Project status:** prepared for Mozilla Add-ons review. It has not yet been signed or listed by Mozilla.
 
 ## What it does
 
 - Extracts the main article with Mozilla Readability and sanitizes it with DOMPurify.
 - Replaces the current tab with a focused reader instead of opening another tab.
+- Offers a secure isolated mode by default and an optional compatibility mode for translation and accessibility extensions.
 - Supports light, dark, sepia, slate, high-contrast, and system themes.
 - Detects LTR/RTL text and provides controls for direction, font size, line height, column width, and toolbar position.
 - Preserves responsive images, bordered tables, and syntax-highlighted code blocks.
@@ -31,6 +32,13 @@ The default translation provider is **On-device**. No API key is required and ar
 On first use of a language pair, the extension downloads the corresponding model files from Mozilla Remote Settings and Mozilla's official attachment CDN. Both the compressed and decompressed files are SHA-256 verified before the model is used. Later translations use the local cache.
 
 English ↔ Persian is supported by the released Mozilla models. Other languages depend on the current Firefox model catalog; when no direct pair exists, Bergamot can use English as a pivot if both required models are available.
+
+## Reader modes
+
+- **Secure Reader** is the default. It runs on an isolated extension page, preventing the source website from interacting with the Reader. Firefox also prevents unrelated extensions from injecting into this page.
+- **Compatible Reader** renders the sanitized Reader interface inside the current website URL. Extensions that already have permission for that website can then access the article DOM—for example, to translate selected text. Pressing the Reader close button reloads the original page.
+
+Compatibility mode is intentionally opt-in and offers less isolation from the source website. Whether another extension works still depends on how that extension detects and processes page content.
 
 ### Resource limits
 
@@ -115,6 +123,7 @@ Firefox also requests its optional `websiteContent` and `authenticationInfo` dat
 - Private Browsing is disabled for this release, so private-window activity cannot be read or stored by the extension.
 - Provider output is rendered as text, never executed as HTML.
 - Extracted article markup is sanitized before it reaches the reader.
+- Secure Reader is the default; the optional Compatible Reader clearly trades page isolation for interoperability with other site-enabled extensions.
 - API keys are stored in `browser.storage.local`. Browser-extension storage is not a server-side secret vault, so use restricted and revocable keys.
 
 ## Permissions
@@ -137,6 +146,7 @@ The manifest sets `incognito` to `not_allowed`; private tabs and windows are inv
 ```text
 src/
 ├── background/   Message routing, context menus, providers, and same-tab Reader launch
+├── compatible/   On-demand same-site Reader mounting for extension interoperability
 ├── content/      Readability extraction and sanitization
 ├── extraction/   Article and reference-link extraction
 ├── highlights/   Durable text anchors and highlight rendering
@@ -149,13 +159,14 @@ src/
 └── shared/       Shared utilities
 ```
 
-Vite builds the extension pages as ES modules and the Firefox background/content entries as standalone IIFEs for Manifest V3 compatibility.
+Vite builds the extension pages as ES modules and the Firefox background/content/compatibility entries as standalone IIFEs for Manifest V3 compatibility.
 
 ## Known limitations
 
 - Temporary add-ons are removed when Firefox restarts. Permanent distribution requires Mozilla signing.
 - Firefox-protected pages and local files without permission cannot be extracted.
 - Some highly dynamic pages do not expose stable article content to Readability.
+- Compatible Reader cannot guarantee support for extensions that only inspect a page once before Reader is activated.
 - Translation quality varies by language pair and is generally below the largest cloud translation systems.
 - On-device translation requires WebAssembly SIMD support.
 - Very large page changes can prevent an old highlight anchor from being rendered, although its saved data is retained.

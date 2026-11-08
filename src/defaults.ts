@@ -16,6 +16,7 @@ export const DEFAULT_PROVIDER_SETTINGS: ProviderSettings = {
 
 export const DEFAULT_READER_PREFERENCES: ReaderPreferences = {
   theme: 'system',
+  readerMode: 'secure',
   toolbarPosition: 'left',
   fontSize: 20,
   lineHeight: 1.9,

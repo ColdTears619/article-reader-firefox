@@ -12,7 +12,8 @@ type FirefoxPermissionRequest = browser.Permissions.Permissions & {
 };
 
 async function load(): Promise<void> {
-  const value = await settingsRepository.getProvider();
+  const [value, readerPreferences] = await Promise.all([settingsRepository.getProvider(), settingsRepository.getReader()]);
+  byId<HTMLSelectElement>('reader-launch-mode').value = readerPreferences.readerMode;
   byId<HTMLSelectElement>('translation-provider').value = value.translationProvider;
   byId<HTMLSelectElement>('ai-provider').value = value.aiProvider;
   byId<HTMLInputElement>('endpoint').value = value.endpoint;
@@ -41,7 +42,13 @@ form.addEventListener('submit', event => {
     maxInputChars: Number(byId<HTMLInputElement>('max-input').value),
     consentGiven: byId<HTMLInputElement>('consent').checked
   };
-  void ensureEndpointPermission(value).then(() => settingsRepository.setProvider(value)).then(() => {
+  void ensureEndpointPermission(value).then(async () => {
+    const readerPreferences = await settingsRepository.getReader();
+    await Promise.all([
+      settingsRepository.setProvider(value),
+      settingsRepository.setReader({ ...readerPreferences, readerMode: byId<HTMLSelectElement>('reader-launch-mode').value as 'secure' | 'compatible' })
+    ]);
+  }).then(() => {
     status.textContent = 'Settings saved.';
     setTimeout(() => { status.textContent = ''; }, 2500);
   }).catch((error: unknown) => { status.textContent = error instanceof Error ? error.message : 'Could not save settings.'; });

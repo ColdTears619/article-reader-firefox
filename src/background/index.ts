@@ -1,7 +1,7 @@
 import browser from 'webextension-polyfill';
 import { createProviders } from '../providers';
 import { detectSourceLanguage } from '../providers/local-translation';
-import { articleRepository, resultRepository, settingsRepository } from '../storage/repositories';
+import { articleRepository, highlightRepository, noteRepository, resultRepository, settingsRepository } from '../storage/repositories';
 import type { AIResult, Article, ExtensionMessage, TranslationResult } from '../types';
 import { uid } from '../shared/utils';
 import { hasCloudDataPermissions, type FirefoxDataPermissions } from '../shared/cloud-permissions';
@@ -35,6 +35,9 @@ browser.runtime.onMessage.addListener((message: unknown, sender: browser.Runtime
   const request = message as ExtensionMessage;
   if (request.type === 'open-reader') return openReader(request.tabId ?? sender.tab?.id);
   if (request.type === 'save-current') return saveCurrent(request.tabId ?? sender.tab?.id);
+  if (request.type === 'inject-compatible-reader-styles') return injectCompatibleReaderStyles(request.css, sender.tab?.id);
+  if (request.type === 'open-options') return browser.runtime.openOptionsPage().then(() => ({ ok: true }));
+  if (request.type === 'reader-data') return handleReaderData(request);
   if (request.type === 'translate') return deduplicated(request.requestId, () => runTranslation(request));
   if (request.type === 'ai') return deduplicated(request.requestId, () => runAI(request));
   if (request.type === 'cancel-request') {
@@ -60,9 +63,42 @@ async function openReader(tabId?: number): Promise<{ ok: boolean; error?: string
   try {
     if (tabId === undefined) throw new Error('No active tab was found.');
     const article = await extractFromTab(tabId);
-    await articleRepository.put(article, false);
-    await browser.tabs.update(tabId, { url: browser.runtime.getURL(`reader.html?id=${encodeURIComponent(article.id)}`) });
+    const storedArticle = await articleRepository.put(article, false);
+    const preferences = await settingsRepository.getReader();
+    if (preferences.readerMode === 'compatible') {
+      await browser.scripting.executeScript({ target: { tabId, frameIds: [0] }, files: ['compatible.js'] });
+      const response = await browser.tabs.sendMessage(tabId, { type: 'mount-compatible-reader', article: storedArticle }, { frameId: 0 }) as { ok?: boolean; error?: string } | undefined;
+      if (!response?.ok) throw new Error(response?.error ?? 'Compatible Reader could not start on this page.');
+    } else {
+      await browser.tabs.update(tabId, { url: browser.runtime.getURL(`reader.html?id=${encodeURIComponent(article.id)}`) });
+    }
     return { ok: true };
+  } catch (error) {
+    return { ok: false, error: friendlyError(error) };
+  }
+}
+
+async function injectCompatibleReaderStyles(css: string, tabId?: number): Promise<{ ok: boolean; error?: string }> {
+  try {
+    if (tabId === undefined) throw new Error('The source tab is no longer available.');
+    await browser.scripting.insertCSS({ target: { tabId, frameIds: [0] }, css });
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: friendlyError(error) };
+  }
+}
+
+async function handleReaderData(request: Extract<ExtensionMessage, { type: 'reader-data' }>): Promise<{ ok: boolean; value?: unknown; error?: string }> {
+  try {
+    switch (request.action) {
+      case 'list-highlights': return { ok: true, value: await highlightRepository.list(request.articleId) };
+      case 'put-highlight': await highlightRepository.put(request.highlight); return { ok: true };
+      case 'delete-highlight': await highlightRepository.delete(request.highlightId); return { ok: true };
+      case 'list-notes': return { ok: true, value: await noteRepository.list(request.articleId) };
+      case 'put-note': await noteRepository.put(request.note); return { ok: true };
+      case 'delete-note': await noteRepository.delete(request.noteId); return { ok: true };
+      case 'save-article': return { ok: true, value: await articleRepository.put(request.article) };
+    }
   } catch (error) {
     return { ok: false, error: friendlyError(error) };
   }

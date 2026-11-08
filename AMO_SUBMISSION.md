@@ -1,6 +1,6 @@
 # Mozilla Add-ons Submission Notes
 
-This file contains the copy and reviewer information for the initial public listing of Article Reader 1.0.0 on addons.mozilla.org (AMO).
+This file contains the copy and reviewer information for Article Reader 1.1.0 on addons.mozilla.org (AMO).
 
 ## Listing
 
@@ -16,7 +16,7 @@ Turn articles into a focused reader with private on-device translation, highligh
 
 Article Reader turns the current article into a clean, customizable reading view without opening another tab.
 
-It was created to solve a practical Firefox limitation: normal translation extensions cannot run inside Firefox's privileged built-in Reader View. Article Reader provides its own secure reading surface so reading, translation, highlighting, notes, references, and article tools can work together.
+It was created to solve a practical Firefox limitation: normal translation extensions cannot run inside Firefox's privileged built-in Reader View. Article Reader provides a secure reading surface with built-in tools plus an optional same-site compatibility mode for other translation and accessibility extensions.
 
 Features include:
 
@@ -28,6 +28,7 @@ Features include:
 - readable tables and syntax-highlighted code blocks;
 - light, dark, sepia, slate, contrast, and system themes;
 - LTR/RTL detection and typography controls;
+- a default isolated Reader and an optional compatibility mode for extensions with access to the source site;
 - private local summaries and key points; and
 - optional Google Cloud Translation and OpenAI-compatible providers configured with the user's own credentials.
 
@@ -43,7 +44,7 @@ Article Reader has no analytics, advertising, account requirement, or developer-
 
 ## Version notes
 
-Initial public release. Includes same-tab Reader mode, local translation, local summaries and key points, saved articles, highlights, notes, references, image zoom, code highlighting, themes, bidirectional text support, and opt-in cloud providers.
+Adds an optional Compatible Reader mode that preserves the source website URL and lets extensions with site access interact with the sanitized article DOM. Secure isolated Reader remains the default. Also includes local translation, local summaries and key points, saved articles, highlights, notes, references, image zoom, code highlighting, themes, bidirectional text support, and opt-in cloud providers.
 
 ## Notes for reviewers
 
@@ -90,6 +91,7 @@ No environment variables, private registries, credentials, network-based build s
 - On first use of a language pair, model files are downloaded from Mozilla Firefox Remote Settings and its official attachment CDN. Article text is not sent with model requests.
 - Google Cloud Translation and OpenAI-compatible providers are optional. The user must configure a provider, confirm the disclosure, grant Firefox's optional `websiteContent` and `authenticationInfo` permissions, and directly invoke an operation before data is sent.
 - The background process rechecks both optional data permissions before every cloud request.
+- Secure Reader is the default. Compatible Reader is explicitly selected in Settings; it injects the packaged `compatible.js` and packaged Reader CSS only after the user opens an article, while article and annotation persistence remains in extension-owned IndexedDB through background messages.
 
 ### Third-party packages included in the build
 
@@ -112,7 +114,7 @@ Article markup is sanitized with DOMPurify before storage and sanitized again be
 
 ### Permission rationale
 
-- `activeTab`, `tabs`, and `scripting`: extract the article only when the user opens or saves it and replace the current tab with Reader mode.
+- `activeTab`, `tabs`, and `scripting`: extract the article only when the user opens or saves it, replace the current tab with secure Reader mode, or inject the packaged compatibility Reader after an explicit user action.
 - `storage` and `unlimitedStorage`: save preferences and article data, and cache verified translation models with a 128 MB application limit.
 - `contextMenus`: expose user-initiated Reader, translation, summary, and explanation actions.
 - Mozilla model-host permissions: download the official catalog and model files without sending article content.
@@ -126,6 +128,7 @@ Article markup is sanitized with DOMPurify before storage and sanitized again be
 3. Select text and choose **Translate**. Keep the default on-device provider to test without credentials.
 4. Add a highlight and note, then open the corresponding panels.
 5. Open **Settings** to inspect the local and optional cloud-provider choices.
+6. Select **Compatible Reader**, return to a normal article, and open Reader again. Confirm that the URL remains the source URL and that the close button reloads the original page.
 
 Firefox-protected pages such as `about:` pages are intentionally unsupported.
 Private Browsing is intentionally unsupported so no data from a private session can enter persistent extension storage.

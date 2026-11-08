@@ -6,6 +6,12 @@
     <div class="page-heading"><div><p class="eyebrow">Article Reader</p><h1>Provider settings</h1></div><a href="library.html">Library</a></div>
     <form id="provider-form" class="settings-form">
       <section>
+        <h2>Reader behavior</h2>
+        <p class="muted">Choose whether Reader runs in an isolated extension page or directly inside the current website.</p>
+        <label>Reader launch mode<select id="reader-launch-mode"><option value="secure">Secure Reader — isolated</option><option value="compatible">Compatible Reader — allows other extensions</option></select></label>
+        <div class="provider-subsection"><p class="muted provider-help"><strong>Secure Reader</strong> offers the strongest isolation. <strong>Compatible Reader</strong> keeps the website URL and renders Reader in the page, so other extensions with access to that website can work with the article text. Compatibility depends on the other extension.</p></div>
+      </section>
+      <section>
         <h2>Translation and AI</h2>
         <p class="muted">Translation, summaries, and key points can run privately on this device. Cloud providers remain optional.</p>
         <label>Translation provider<select id="translation-provider"><option value="local">On-device — free & private</option><option value="google-cloud">Google Cloud Translation</option><option value="openai-compatible">OpenAI-compatible</option></select></label>

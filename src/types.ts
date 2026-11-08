@@ -95,6 +95,7 @@ export interface ProviderSettings {
 
 export interface ReaderPreferences {
   theme: Theme;
+  readerMode: 'secure' | 'compatible';
   toolbarPosition: 'left' | 'right';
   fontSize: number;
   lineHeight: number;
@@ -106,6 +107,16 @@ export type ExtensionMessage =
   | { type: 'extract-article' }
   | { type: 'probe-page' }
   | { type: 'open-reader'; tabId?: number }
+  | { type: 'mount-compatible-reader'; article: Article }
+  | { type: 'inject-compatible-reader-styles'; css: string }
+  | { type: 'open-options' }
+  | { type: 'reader-data'; action: 'list-highlights'; articleId: string }
+  | { type: 'reader-data'; action: 'put-highlight'; highlight: Highlight }
+  | { type: 'reader-data'; action: 'delete-highlight'; highlightId: string }
+  | { type: 'reader-data'; action: 'list-notes'; articleId: string }
+  | { type: 'reader-data'; action: 'put-note'; note: Note }
+  | { type: 'reader-data'; action: 'delete-note'; noteId: string }
+  | { type: 'reader-data'; action: 'save-article'; article: Article }
   | { type: 'save-current'; tabId?: number }
   | { type: 'translate'; text: string; articleId?: string; sourceLanguage?: string; targetLanguage?: string; requestId: string }
   | { type: 'ai'; text: string; articleId?: string; operation: AIOperation; requestId: string }

@@ -2,7 +2,7 @@ import browser from 'webextension-polyfill';
 import DOMPurify from 'dompurify';
 import { createTextAnchor, resolveTextAnchor } from '../highlights/anchor';
 import { wrapTextRange } from '../highlights/render';
-import { articleRepository, highlightRepository, noteRepository, resultRepository, settingsRepository } from '../storage/repositories';
+import { resultRepository, settingsRepository } from '../storage/repositories';
 import type { AIResult, Article, Highlight, HighlightColor, Note, ProviderSettings, ReaderPreferences, ReferenceLink, TranslationResult } from '../types';
 import { isExtensionContextInvalidatedError, isMissingMessageReceiverError, isRtlText, uid } from '../shared/utils';
 import { readerStyle } from './preferences';
@@ -13,6 +13,8 @@ import { createProviders } from '../providers';
 import { detectSourceLanguage } from '../providers/local-translation';
 import { hasCloudDataPermissions, type FirefoxDataPermissions } from '../shared/cloud-permissions';
 import { aiRequestTimeoutMs, runAIForText } from '../providers/full-text-ai';
+import { createReaderDataStore } from './data-store';
+import { getCompatibleArticle, isCompatibleReader } from './runtime';
 
 const byId = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const state = byId<HTMLElement>('state');
@@ -38,6 +40,8 @@ let currentPreferences: ReaderPreferences;
 let selectionRect: DOMRect | undefined;
 let pendingTranslationText = '';
 let activeHighlightId: string | undefined;
+const compatibleArticle = getCompatibleArticle();
+const dataStore = createReaderDataStore(compatibleArticle);
 
 async function init(): Promise<void> {
   currentPreferences = await settingsRepository.getReader();
@@ -52,12 +56,12 @@ async function init(): Promise<void> {
   languageSelect.value = providerSettings.targetLanguage;
   readerLanguageSelect.value = providerSettings.targetLanguage;
   const params = new URLSearchParams(location.search);
-  if (params.has('context')) { await handleContextAction(); return; }
-  const id = params.get('id');
+  if (!compatibleArticle && params.has('context')) { await handleContextAction(); return; }
+  const id = compatibleArticle?.id ?? params.get('id');
   if (!id) return showError('The article ID is missing from the URL.');
-  article = await articleRepository.get(id);
+  article = compatibleArticle ?? await dataStore.getArticle(id);
   if (!article) return showError('The article could not be found. It may have been deleted.');
-  [highlights, notes] = await Promise.all([highlightRepository.list(id), noteRepository.list(id)]);
+  [highlights, notes] = await Promise.all([dataStore.listHighlights(id), dataStore.listNotes(id)]);
   renderArticle();
   setSaveState(Boolean(article.savedAt));
   renderHighlights();
@@ -150,20 +154,20 @@ async function createHighlight(color: HighlightColor): Promise<Highlight | undef
     anchor: createTextAnchor(content.textContent ?? '', offsets.start, offsets.end, block?.dataset.readerBlock ?? '', domPath(block), article.contentHash),
     createdAt: now, updatedAt: now
   };
-  await highlightRepository.put(value); highlights.push(value); toolbar.classList.add('hidden');
+  await dataStore.putHighlight(value); highlights.push(value); toolbar.classList.add('hidden');
   rerenderHighlightsAndNotes(); return value;
 }
 
 async function changeColor(highlight: Highlight, color: HighlightColor): Promise<void> {
-  highlight.color = color; highlight.updatedAt = Date.now(); await highlightRepository.put(highlight); hideHighlightPalette(); rerenderHighlightsAndNotes();
+  highlight.color = color; highlight.updatedAt = Date.now(); await dataStore.putHighlight(highlight); hideHighlightPalette(); rerenderHighlightsAndNotes();
 }
 
 async function deleteHighlight(id: string): Promise<void> {
-  await highlightRepository.delete(id); highlights = highlights.filter(item => item.id !== id); notes = notes.filter(item => item.highlightId !== id); rerenderHighlightsAndNotes();
+  await dataStore.deleteHighlight(id); highlights = highlights.filter(item => item.id !== id); notes = notes.filter(item => item.highlightId !== id); rerenderHighlightsAndNotes();
 }
 
 async function deleteNote(id: string): Promise<void> {
-  await noteRepository.delete(id); notes = notes.filter(item => item.id !== id); renderNotes();
+  await dataStore.deleteNote(id); notes = notes.filter(item => item.id !== id); renderNotes();
 }
 
 function rerenderHighlightsAndNotes(): void { renderArticle(); renderHighlights(); renderNotes(); }
@@ -182,7 +186,7 @@ byId<HTMLFormElement>('note-form').addEventListener('submit', event => {
   const existing = notes.find(item => item.highlightId === pendingHighlight!.id);
   const now = Date.now();
   const value: Note = { id: existing?.id ?? uid('note'), articleId: article.id, highlightId: pendingHighlight.id, text: byId<HTMLTextAreaElement>('note-text').value.trim(), createdAt: existing?.createdAt ?? now, updatedAt: now };
-  void noteRepository.put(value).then(() => { notes = notes.filter(item => item.id !== value.id).concat(value); noteDialog.close(); renderNotes(); });
+  void dataStore.putNote(value).then(() => { notes = notes.filter(item => item.id !== value.id).concat(value); noteDialog.close(); renderNotes(); });
 });
 byId('cancel-note').addEventListener('click', () => noteDialog.close());
 byId('close-note').addEventListener('click', () => noteDialog.close());
@@ -212,7 +216,7 @@ async function requestResult(operation: ResultOperation, text: string, targetLan
   const payload = operation === 'translate' ? { type: 'translate', text, articleId: article?.id, sourceLanguage: 'auto', targetLanguage: targetLanguage ?? 'en', requestId: currentRequestId } : { type: 'ai', text, articleId: article?.id, operation, requestId: currentRequestId };
   try {
     const response = await requestThroughBackground(payload).catch(async error => {
-      if (!isMissingMessageReceiverError(error) || !extensionContextIsAlive()) throw error;
+      if (isCompatibleReader() || !isMissingMessageReceiverError(error) || !extensionContextIsAlive()) throw error;
       return runRequestInReader(operation, text, targetLanguage, providerSettings);
     });
     byId('result-output').textContent = response.ok && response.result ? ('translatedText' in response.result ? response.result.translatedText : response.result.output) : (response.error ?? 'The request failed.');
@@ -303,7 +307,9 @@ byId('cancel-request').addEventListener('click', () => {
   currentRequestController?.abort();
   if (currentRequestId) void browser.runtime.sendMessage({ type: 'cancel-request', requestId: currentRequestId }).catch(() => undefined);
 });
-byId('result-settings').addEventListener('click', () => { void browser.runtime.openOptionsPage(); });
+byId('result-settings').addEventListener('click', () => {
+  void (isCompatibleReader() ? browser.runtime.sendMessage({ type: 'open-options' }) : browser.runtime.openOptionsPage());
+});
 byId('result-reload').addEventListener('click', () => { location.reload(); });
 byId<HTMLFormElement>('translation-form').addEventListener('submit', event => {
   event.preventDefault();
@@ -327,10 +333,11 @@ byId<HTMLSelectElement>('reader-translation-language').addEventListener('change'
 byId('summarize-article').addEventListener('click', () => { if (article) void requestResult('summarize', article.textContent); });
 byId('key-points').addEventListener('click', () => { if (article) void requestResult('key-points', article.textContent); });
 byId('save-article').addEventListener('click', () => {
-  if (!article) return; void articleRepository.put(article).then(saved => { article = saved; setSaveState(true); });
+  if (!article) return; void dataStore.saveArticle(article).then(saved => { article = saved; setSaveState(true); });
 });
 byId('back-source').addEventListener('click', () => {
   if (!article) return;
+  if (isCompatibleReader()) { location.reload(); return; }
   void browser.tabs.getCurrent().then(tab => tab?.id === undefined ? browser.tabs.create({ url: article!.url }) : browser.tabs.update(tab.id, { url: article!.url }));
 });
 byId('toggle-notes').addEventListener('click', () => toggleSidePanel('notes'));
@@ -389,7 +396,7 @@ document.addEventListener('keydown', event => {
     settingsPanel.classList.add('hidden'); settingsButton.setAttribute('aria-expanded', 'false'); settingsButton.focus();
   }
 });
-for (const id of ['theme', 'toolbar-position', 'direction', 'font-size', 'line-height', 'column-width']) byId(id).addEventListener('input', () => {
+for (const id of ['theme', 'reader-mode', 'toolbar-position', 'direction', 'font-size', 'line-height', 'column-width']) byId(id).addEventListener('input', () => {
   updateAppearanceReadouts();
   void savePreferences();
 });
@@ -401,7 +408,7 @@ function updateAppearanceReadouts(): void {
 }
 
 async function savePreferences(): Promise<void> {
-  const prefs: ReaderPreferences = { theme: byId<HTMLSelectElement>('theme').value as ReaderPreferences['theme'], toolbarPosition: byId<HTMLSelectElement>('toolbar-position').value as ReaderPreferences['toolbarPosition'], direction: byId<HTMLSelectElement>('direction').value as ReaderPreferences['direction'], fontSize: Number(byId<HTMLInputElement>('font-size').value), lineHeight: Number(byId<HTMLInputElement>('line-height').value), columnWidth: Number(byId<HTMLInputElement>('column-width').value) };
+  const prefs: ReaderPreferences = { theme: byId<HTMLSelectElement>('theme').value as ReaderPreferences['theme'], readerMode: byId<HTMLSelectElement>('reader-mode').value as ReaderPreferences['readerMode'], toolbarPosition: byId<HTMLSelectElement>('toolbar-position').value as ReaderPreferences['toolbarPosition'], direction: byId<HTMLSelectElement>('direction').value as ReaderPreferences['direction'], fontSize: Number(byId<HTMLInputElement>('font-size').value), lineHeight: Number(byId<HTMLInputElement>('line-height').value), columnWidth: Number(byId<HTMLInputElement>('column-width').value) };
   await settingsRepository.setReader(prefs); await applyPreferences(prefs);
 }
 
@@ -409,7 +416,7 @@ async function applyPreferences(prefs: ReaderPreferences): Promise<void> {
   currentPreferences = prefs;
   document.documentElement.dataset.theme = prefs.theme; document.body.dataset.direction = prefs.direction; document.body.dataset.toolbarPosition = prefs.toolbarPosition;
   for (const [name, value] of Object.entries(readerStyle(prefs))) document.body.style.setProperty(name, value);
-  byId<HTMLSelectElement>('theme').value = prefs.theme; byId<HTMLSelectElement>('toolbar-position').value = prefs.toolbarPosition; byId<HTMLSelectElement>('direction').value = prefs.direction; byId<HTMLInputElement>('font-size').value = String(prefs.fontSize); byId<HTMLInputElement>('line-height').value = String(prefs.lineHeight); byId<HTMLInputElement>('column-width').value = String(prefs.columnWidth);
+  byId<HTMLSelectElement>('theme').value = prefs.theme; byId<HTMLSelectElement>('reader-mode').value = prefs.readerMode; byId<HTMLSelectElement>('toolbar-position').value = prefs.toolbarPosition; byId<HTMLSelectElement>('direction').value = prefs.direction; byId<HTMLInputElement>('font-size').value = String(prefs.fontSize); byId<HTMLInputElement>('line-height').value = String(prefs.lineHeight); byId<HTMLInputElement>('column-width').value = String(prefs.columnWidth);
   updateAppearanceReadouts();
   const flipButton = byId<HTMLButtonElement>('flip-toolbar');
   const destination = prefs.toolbarPosition === 'left' ? 'right' : 'left';
